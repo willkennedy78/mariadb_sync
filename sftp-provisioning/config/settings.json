@@ -1,0 +1,50 @@
+{
+    "general": {
+        "queue_path": "./queue",
+        "log_path": "./logs",
+        "log_level": "INFO"
+    },
+    "azure_ad": {
+        "tenant_id": "YOUR_TENANT_GUID",
+        "client_id": "YOUR_APP_CLIENT_ID",
+        "client_secret_env_var": "AZURE_CLIENT_SECRET",
+        "sharepoint_site_id": "YOUR_SHAREPOINT_SITE_ID",
+        "sharepoint_drive_id": "YOUR_DRIVE_ID",
+        "sharepoint_folder_path": "SFTP-Requests/pending"
+    },
+    "bitvise": {
+        "server_host": "BITVISE_SERVER_IP",
+        "ssh_port": 22,
+        "ssh_username": "admin",
+        "ssh_key_path": "",
+        "ssh_password_env_var": "BITVISE_SSH_PASSWORD",
+        "com_object_name": "BssCfg815.BssCfg815",
+        "default_group": "SFTP Users",
+        "base_mount_path_test": "D:\\SFTP\\Test",
+        "base_mount_path_prod": "D:\\SFTP\\Prod",
+        "provisioning_script_remote_path": "C:\\Scripts\\SFTP-Provisioning\\Provision-SFTPAccount.ps1"
+    },
+    "password_defaults": {
+        "length": 32,
+        "use_special_chars": false,
+        "charset": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        "encoding": "ASCII"
+    },
+    "notifications": {
+        "admin_email": "ops-team@yourcompany.com",
+        "credential_delivery_service": "manual"
+    },
+    "form_field_mapping": {
+        "customer_name": "Customer Name",
+        "requester_name": "Requester Name",
+        "environment": "Do you require credentials for the test or production environment(s)",
+        "auth_method": "We support both password and public key based authentication.  Please indicate how we should authenticate your connection to our platform",
+        "password_restrictions": "Do you have any password complexity restrictions or requirements.  Our default is 32 character alphanumeric with no special characters, ASCII encoded.",
+        "password_requirements_detail": "Specify your password restriction requirements.  We will attempt to accommodate these, but may not always be able to.",
+        "public_key": "As you selected public key based authentication, please paste the key below.  This should be a mininmum of 2048 bits, using RSA, Ed25519, or ECDSA algorithms and should be the entire key not a fingerpri",
+        "delivery_method": "We supply credentials using a password-protected dissolvable link to a named contact.  The named contact needs to supply an email address to receive the link and also choose a second delivery method f",
+        "recipient_email": "Provide the email address of the person you wish to receive the secure credentials link",
+        "recipient_phone": "Provide the contact number for delivery of the password, including the country code, in international format - (e.g. +44 12345 678901) or a Telegram handle if using Telegram.",
+        "ip_whitelist": "In addition to authentication, our service is IP locked to permitted source addresses.  Please provide all source addresses that will need to connect.  Permitted formats are individual addresses, IP a"
+    }
+}
