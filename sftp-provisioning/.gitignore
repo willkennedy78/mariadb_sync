@@ -1,0 +1,14 @@
+# Queue data files (keep the directories, ignore the contents)
+queue/pending/*.json
+queue/approved/*.json
+queue/completed/*.json
+queue/completed/credentials/
+queue/rejected/*.json
+
+# Logs
+logs/*.log
+
+# Sensitive files
+*.cred
+*.secret
+*-cred.xml
