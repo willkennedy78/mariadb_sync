@@ -13,16 +13,14 @@
         "sharepoint_folder_path": "9. Technology/SFTP_Onboarding"
     },
     "bitvise": {
-        "server_host": "BITVISE_SERVER_IP",
-        "ssh_port": 22,
-        "ssh_username": "admin",
-        "ssh_key_path": "",
-        "ssh_password_env_var": "BITVISE_SSH_PASSWORD",
+        "computer_name": "BITVISE_SERVER_HOSTNAME",
+        "credential_username": "DOMAIN\\admin",
+        "credential_password_env_var": "BITVISE_ADMIN_PASSWORD",
+        "use_ssl": false,
         "com_object_name": "BssCfg815.BssCfg815",
         "default_group": "SFTP Users",
         "base_mount_path_test": "D:\\SFTP\\Test",
-        "base_mount_path_prod": "D:\\SFTP\\Prod",
-        "provisioning_script_remote_path": "C:\\Scripts\\SFTP-Provisioning\\Provision-SFTPAccount.ps1"
+        "base_mount_path_prod": "D:\\SFTP\\Prod"
     },
     "password_defaults": {
         "length": 32,
