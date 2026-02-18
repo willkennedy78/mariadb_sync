@@ -62,17 +62,30 @@ setx AZURE_CLIENT_SECRET "your-secret-value" /M
 ### Option A: Using Graph Explorer
 
 1. Go to [Graph Explorer](https://developer.microsoft.com/en-us/graph/graph-explorer)
-2. Sign in with your M365 account
-3. Run this query to find your site:
+2. Sign in with your M365 account and ensure you've consented to `Sites.Read.All`
+   under **Modify permissions**
+3. Run this query to find your site (use the exact hostname and path, not search):
    ```
-   GET https://graph.microsoft.com/v1.0/sites?search=YourSiteName
+   GET https://graph.microsoft.com/v1.0/sites/{hostname}:/{server-relative-path}
    ```
+   For example:
+   ```
+   GET https://graph.microsoft.com/v1.0/sites/fttglobal.sharepoint.com:/sites/CSI
+   ```
+   **Note**: The `sites?search=` endpoint is unreliable — always prefer the direct
+   hostname+path format above.
 4. Note the `id` field (format: `hostname,site-id,web-id`)
 5. Run this query to find the drive:
    ```
    GET https://graph.microsoft.com/v1.0/sites/{site-id}/drives
    ```
-6. Find the drive matching your document library name and note its `id`
+6. Find the drive with `name: "Documents"` (this is "Shared Documents" internally)
+   and note its `id`
+7. Verify the target folder is accessible:
+   ```
+   GET https://graph.microsoft.com/v1.0/drives/{drive-id}/root:/9. Technology/SFTP_Onboarding:/children
+   ```
+   **Note**: This returns 404 if the folder is empty — that's expected for a new setup.
 
 ### Option B: Using PowerShell
 
@@ -87,9 +100,9 @@ $tokenBody = @{
 $token = (Invoke-RestMethod -Uri "https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token" -Method POST -Body $tokenBody).access_token
 $headers = @{ "Authorization" = "Bearer $token" }
 
-# List sites
-Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/sites?search=OpsTeam" -Headers $headers |
-    Select-Object -ExpandProperty value | Format-Table displayName, id
+# Get site by hostname + path (more reliable than search)
+Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/sites/fttglobal.sharepoint.com:/sites/CSI" -Headers $headers |
+    Select-Object displayName, id
 
 # List drives for a site
 $siteId = "your-site-id"
@@ -107,9 +120,9 @@ Update `config/settings.json` with your values:
         "tenant_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
         "client_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
         "client_secret_env_var": "AZURE_CLIENT_SECRET",
-        "sharepoint_site_id": "contoso.sharepoint.com,xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx,xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        "sharepoint_site_id": "fttglobal.sharepoint.com,xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx,xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
         "sharepoint_drive_id": "b!xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "sharepoint_folder_path": "SFTP-Requests/pending"
+        "sharepoint_folder_path": "9. Technology/SFTP_Onboarding"
     }
 }
 ```

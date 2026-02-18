@@ -8,9 +8,9 @@
         "tenant_id": "YOUR_TENANT_GUID",
         "client_id": "YOUR_APP_CLIENT_ID",
         "client_secret_env_var": "AZURE_CLIENT_SECRET",
-        "sharepoint_site_id": "YOUR_SHAREPOINT_SITE_ID",
-        "sharepoint_drive_id": "YOUR_DRIVE_ID",
-        "sharepoint_folder_path": "SFTP-Requests/pending"
+        "sharepoint_site_id": "fttglobal.sharepoint.com,cd333b0a-dd26-40bf-bfa3-816ceb316f0f,c5d8d835-27e0-4dd6-a392-b1c8f389cd43",
+        "sharepoint_drive_id": "b!CjszzSbdv0C_o4Fs6zFvDzXY2MXgJ9ZNo5KxyPOJzUOifI8EBixbR6F8YYA97vVV",
+        "sharepoint_folder_path": "9. Technology/SFTP_Onboarding"
     },
     "bitvise": {
         "server_host": "BITVISE_SERVER_IP",
