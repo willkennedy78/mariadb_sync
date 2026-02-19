@@ -21,8 +21,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config = $configRaw | ConvertFrom-Json
+$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath), [System.Text.UTF8Encoding]::new($false))
+$config = ConvertFrom-Json -InputObject $configRaw
 $azureConfig = $config.azure_ad
 $queuePath   = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.queue_path "pending"
 $logPath     = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.log_path

@@ -21,8 +21,8 @@ $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config    = $configRaw | ConvertFrom-Json
+$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath), [System.Text.UTF8Encoding]::new($false))
+$config    = ConvertFrom-Json -InputObject $configRaw
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
@@ -178,7 +178,7 @@ function Invoke-Review {
         $currentIndex++
 
         try {
-            $rawData = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $rawData = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
 
             # Check if already parsed (has 'status' field) or needs parsing
             if ($rawData.status -and $rawData.customer_name) {

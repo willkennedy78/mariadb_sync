@@ -46,7 +46,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ── Parse request ───────────────────────────────────────────────────────────────
-$request = $RequestJson | ConvertFrom-Json
+$request = ConvertFrom-Json -InputObject $RequestJson
 
 $username = if ($Environment -eq "test") { $request.username_test } else { $request.username_prod }
 if (-not $username) {

@@ -39,8 +39,8 @@ Import-Module (Join-Path $PSScriptRoot "modules\PasswordGenerator.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config    = $configRaw | ConvertFrom-Json
+$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath), [System.Text.UTF8Encoding]::new($false))
+$config    = ConvertFrom-Json -InputObject $configRaw
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
@@ -145,7 +145,7 @@ function Invoke-RemoteBitviseCommand {
     # Extract JSON from output (the script outputs JSON at the end)
     $jsonMatch = [regex]::Match($outputStr, '\{[\s\S]*\}$')
     if ($jsonMatch.Success) {
-        return $jsonMatch.Value | ConvertFrom-Json
+        return ConvertFrom-Json -InputObject $jsonMatch.Value
     }
 
     Write-Log "Remote output: $outputStr" "WARNING"
@@ -188,7 +188,7 @@ function Invoke-Provision {
     foreach ($file in $approvedFiles) {
         Write-Log "Processing: $($file.Name)"
 
-        $request = Get-Content $file.FullName -Raw | ConvertFrom-Json
+        $request = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
         $requestJson = $request | ConvertTo-Json -Depth 10 -Compress
 
         # Determine environments to provision
@@ -345,7 +345,7 @@ function Invoke-Report {
         Write-Host ""
         Write-Host "  Recent Completions:" -ForegroundColor Green
         foreach ($file in $recentCompleted) {
-            $req = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $req = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
             Write-Host "    - $($req.customer_name) ($($req.environment -join ', ')) - $($req.provisioned_at)" -ForegroundColor Gray
         }
     }
@@ -358,7 +358,7 @@ function Invoke-Report {
             Write-Host ""
             Write-Host "  PENDING CREDENTIAL DELIVERIES: $($pendingCreds.Count)" -ForegroundColor Yellow
             foreach ($cred in $pendingCreds) {
-                $credData = Get-Content $cred.FullName -Raw | ConvertFrom-Json
+                $credData = ConvertFrom-Json -InputObject (Get-Content $cred.FullName -Raw -Encoding UTF8)
                 Write-Host "    - $($credData.username) -> $($credData.recipient_email) via $($credData.delivery_method)" -ForegroundColor Yellow
             }
         }
