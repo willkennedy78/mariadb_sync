@@ -21,7 +21,8 @@ $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$config    = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
+$config    = $configRaw | ConvertFrom-Json
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
