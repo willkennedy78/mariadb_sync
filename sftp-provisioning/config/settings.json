@@ -13,8 +13,8 @@
         "sharepoint_folder_path": "9. Technology/SFTP_Onboarding"
     },
     "bitvise": {
-        "computer_name": "BITVISE_SERVER_HOSTNAME",
-        "credential_username": "DOMAIN\\admin",
+        "computer_name": "172.30.134.10",
+        "credential_username": "172.30.134.10\\service_sftp",
         "credential_password_env_var": "BITVISE_ADMIN_PASSWORD",
         "use_ssl": false,
         "com_object_name": "BssCfg815.BssCfg815",
