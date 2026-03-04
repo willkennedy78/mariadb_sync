@@ -236,14 +236,19 @@ function Invoke-Sync {
 
             Write-Log "Saved to: $localPath" "SUCCESS"
 
-            # Move file in SharePoint to 'processed'
-            Move-SharePointFile -AccessToken $token -ItemId $file.id -FileName $file.name
-            Write-Log "Moved SharePoint file to processed folder."
+            # Move file in SharePoint to 'processed' (requires Sites.ReadWrite.All)
+            try {
+                Move-SharePointFile -AccessToken $token -ItemId $file.id -FileName $file.name
+                Write-Log "Moved SharePoint file to processed folder."
+            }
+            catch {
+                Write-Log "Could not move '$($file.name)' to processed folder (may need Sites.ReadWrite.All permission). File was downloaded successfully." "WARNING"
+            }
 
             $newCount++
         }
         catch {
-            Write-Log "Failed to process file $($file.name): $_" "ERROR"
+            Write-Log "Failed to download file $($file.name): $_" "ERROR"
         }
     }
 
