@@ -43,7 +43,16 @@ if (-not (Test-Path $ConfigPath)) {
     throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
 }
 $configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
-$config    = ConvertFrom-Json -InputObject $configRaw
+try {
+    $config = ConvertFrom-Json -InputObject $configRaw
+} catch {
+    throw "Failed to parse '$ConfigPath': $($_.Exception.Message)`nCheck for missing closing braces or trailing commas in your JSON."
+}
+foreach ($section in @('general', 'bitvise', 'form_field_mapping')) {
+    if (-not $config.$section) {
+        throw "Configuration '$ConfigPath' is missing required section: '$section'"
+    }
+}
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
@@ -70,6 +79,15 @@ function Write-Log {
     }
 }
 
+# ── Helpers ───────────────────────────────────────────────────────────────────────
+function Resolve-SecretValue {
+    param([string]$ConfigValue)
+    $fromEnv = [Environment]::GetEnvironmentVariable($ConfigValue)
+    if ($fromEnv) { return $fromEnv }
+    if ($ConfigValue -and $ConfigValue -notmatch '^[A-Z_]+$') { return $ConfigValue }
+    return $null
+}
+
 # ── PS Remoting ──────────────────────────────────────────────────────────────────
 function New-BitviseSession {
     <#
@@ -80,10 +98,9 @@ function New-BitviseSession {
     $server        = $bitviseConfig.computer_name
 
     $credUser    = $bitviseConfig.credential_username
-    $credPassEnv = $bitviseConfig.credential_password_env_var
-    $credPass    = [Environment]::GetEnvironmentVariable($credPassEnv)
+    $credPass    = Resolve-SecretValue $bitviseConfig.credential_password_env_var
     if (-not $credPass) {
-        throw "Password not found in environment variable '$credPassEnv'."
+        throw "Cannot resolve Bitvise password. Set environment variable '$($bitviseConfig.credential_password_env_var)' or provide the value directly in settings.json."
     }
 
     $secPass    = ConvertTo-SecureString $credPass -AsPlainText -Force

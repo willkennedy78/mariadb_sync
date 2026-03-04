@@ -25,7 +25,16 @@ if (-not (Test-Path $ConfigPath)) {
     throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
 }
 $configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
-$config    = ConvertFrom-Json -InputObject $configRaw
+try {
+    $config = ConvertFrom-Json -InputObject $configRaw
+} catch {
+    throw "Failed to parse '$ConfigPath': $($_.Exception.Message)`nCheck for missing closing braces or trailing commas in your JSON."
+}
+foreach ($section in @('general', 'form_field_mapping')) {
+    if (-not $config.$section) {
+        throw "Configuration '$ConfigPath' is missing required section: '$section'"
+    }
+}
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
