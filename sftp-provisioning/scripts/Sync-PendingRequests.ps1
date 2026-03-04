@@ -24,6 +24,7 @@ $ErrorActionPreference = "Stop"
 if (-not (Test-Path $ConfigPath)) {
     throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
 }
+$ConfigPath = (Resolve-Path $ConfigPath).Path
 $configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
 try {
     $config = ConvertFrom-Json -InputObject $configRaw
@@ -36,8 +37,9 @@ foreach ($section in @('general', 'azure_ad', 'form_field_mapping')) {
     }
 }
 $azureConfig = $config.azure_ad
-$queuePath   = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.queue_path "pending"
-$logPath     = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.log_path
+$baseDir     = Split-Path (Split-Path $ConfigPath -Parent) -Parent
+$queuePath   = Join-Path (Join-Path $baseDir $config.general.queue_path) "pending"
+$logPath     = Join-Path $baseDir $config.general.log_path
 
 # Ensure directories exist
 New-Item -ItemType Directory -Path $queuePath -Force | Out-Null

@@ -42,6 +42,7 @@ Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 if (-not (Test-Path $ConfigPath)) {
     throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
 }
+$ConfigPath = (Resolve-Path $ConfigPath).Path
 $configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
 try {
     $config = ConvertFrom-Json -InputObject $configRaw
@@ -53,7 +54,7 @@ foreach ($section in @('general', 'bitvise', 'form_field_mapping')) {
         throw "Configuration '$ConfigPath' is missing required section: '$section'"
     }
 }
-$baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
+$baseDir   = Split-Path (Split-Path $ConfigPath -Parent) -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
 $approvedPath  = Join-Path $queueBase "approved"
