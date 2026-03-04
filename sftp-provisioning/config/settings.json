@@ -5,9 +5,9 @@
         "log_level": "INFO"
     },
     "azure_ad": {
-        "tenant_id": "YOUR_TENANT_GUID",
-        "client_id": "YOUR_APP_CLIENT_ID",
-        "client_secret_env_var": "AZURE_CLIENT_SECRET",
+        "tenant_id": "f6c5b5cf-ab13-468c-a78b-40e09ef89ada",
+        "client_id": "4059952e-5b21-4674-9688-93076e1d397c",
+        "client_secret_env_var": "mSl8Q~fULsP5DLHoFsoBxNYt7lE~h7C3Ho.0QaAR",
         "sharepoint_site_id": "fttglobal.sharepoint.com,cd333b0a-dd26-40bf-bfa3-816ceb316f0f,c5d8d835-27e0-4dd6-a392-b1c8f389cd43",
         "sharepoint_drive_id": "b!CjszzSbdv0C_o4Fs6zFvDzXY2MXgJ9ZNo5KxyPOJzUOifI8EBixbR6F8YYA97vVV",
         "sharepoint_folder_path": "9. Technology/SFTP_Onboarding"
@@ -29,20 +29,20 @@
         "encoding": "ASCII"
     },
     "notifications": {
-        "admin_email": "ops-team@yourcompany.com",
+        "admin_email": "wkennedy@currencystream.com",
         "credential_delivery_service": "manual"
     },
     "form_field_mapping": {
-        "customer_name": "Customer Name",
-        "requester_name": "Requester Name",
-        "environment": "Do you require credentials for the test or production environment(s)",
-        "auth_method": "We support both password and public key based authentication.  Please indicate how we should authenticate your connection to our platform",
-        "password_restrictions": "Do you have any password complexity restrictions or requirements.  Our default is 32 character alphanumeric with no special characters, ASCII encoded.",
-        "password_requirements_detail": "Specify your password restriction requirements.  We will attempt to accommodate these, but may not always be able to.",
-        "public_key": "As you selected public key based authentication, please paste the key below.  This should be a mininmum of 2048 bits, using RSA, Ed25519, or ECDSA algorithms and should be the entire key not a fingerpri",
-        "delivery_method": "We supply credentials using a password-protected dissolvable link to a named contact.  The named contact needs to supply an email address to receive the link and also choose a second delivery method f",
-        "recipient_email": "Provide the email address of the person you wish to receive the secure credentials link",
-        "recipient_phone": "Provide the contact number for delivery of the password, including the country code, in international format - (e.g. +44 12345 678901) or a Telegram handle if using Telegram.",
-        "ip_whitelist": "In addition to authentication, our service is IP locked to permitted source addresses.  Please provide all source addresses that will need to connect.  Permitted formats are individual addresses, IP a"
+        "customer_name": "r1a43e5f3a9e84dfaaacb1ccc9eda5bd9",
+        "requester_name": "r9f573418d41245398f446fdd1e94a1fb",
+        "environment": "r2042d0375288456baae6198a0ec51f84",
+        "auth_method": "r90bb174cbb3c4b54a26e5de7075de792",
+        "password_restrictions": "rc526d5d011324f58b535d14f0dcf3148",
+        "password_requirements_detail": "r811ce3d2347f4fc586d7ccadcf6c2906",
+        "public_key": "r363b6fa4a00e48f68a614be6ab51fe2a",
+        "delivery_method": "r12e0ba7ae4d94eea9969055aadbc7865",
+        "recipient_email": "r6671c358958a4c14af76c24d093576fe",
+        "recipient_phone": "r86e54abcfeff4973b2d01506e3598a4f",
+        "ip_whitelist": "rd99dc6ac3b6848e1823534f39454beb9"
     }
 }
