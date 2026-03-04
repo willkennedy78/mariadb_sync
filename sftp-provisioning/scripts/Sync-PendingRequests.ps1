@@ -19,6 +19,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ── Load configuration ──────────────────────────────────────────────────────────
 if (-not (Test-Path $ConfigPath)) {
