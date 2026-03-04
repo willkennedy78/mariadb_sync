@@ -213,7 +213,7 @@ function Invoke-Review {
             switch ($decision) {
                 "approve" {
                     $request.status      = "approved"
-                    $request.reviewed_by  = $env:USERNAME ?? $env:USER ?? "admin"
+                    $request.reviewed_by  = $(if ($env:USERNAME) { $env:USERNAME } elseif ($env:USER) { $env:USER } else { "admin" })
                     $request.reviewed_at  = (Get-Date -Format "o")
 
                     $request | ConvertTo-Json -Depth 10 |
@@ -226,7 +226,7 @@ function Invoke-Review {
                 "reject" {
                     $reason = Read-Host "  Rejection reason"
                     $request.status      = "rejected"
-                    $request.reviewed_by  = $env:USERNAME ?? $env:USER ?? "admin"
+                    $request.reviewed_by  = $(if ($env:USERNAME) { $env:USERNAME } elseif ($env:USER) { $env:USER } else { "admin" })
                     $request.reviewed_at  = (Get-Date -Format "o")
                     $request.notes        = "Rejected: $reason"
 

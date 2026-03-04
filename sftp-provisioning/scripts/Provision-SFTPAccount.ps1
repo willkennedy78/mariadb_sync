@@ -91,7 +91,7 @@ if ($Action -eq "validate") {
     }
 
     $result | ConvertTo-Json
-    exit ($result.success ? 0 : 1)
+    exit $(if ($result.success) { 0 } else { 1 })
 }
 
 # ── Delete action ───────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ if ($Action -eq "delete") {
     }
 
     $result | ConvertTo-Json
-    exit ($result.success ? 0 : 1)
+    exit $(if ($result.success) { 0 } else { 1 })
 }
 
 # ── Create action ───────────────────────────────────────────────────────────────
@@ -294,4 +294,4 @@ catch {
 
 # ── Output result ───────────────────────────────────────────────────────────────
 $result | ConvertTo-Json -Depth 5
-exit ($result.success ? 0 : 1)
+exit $(if ($result.success) { 0 } else { 1 })

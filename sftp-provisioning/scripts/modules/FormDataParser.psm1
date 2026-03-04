@@ -26,10 +26,10 @@ function ConvertTo-SFTPRequest {
 
     # Extract fields using the mapping - try both direct property names and mapped names
     $request = [PSCustomObject]@{
-        id                  = $RawResponse.id ?? $RawResponse.responseId ?? [guid]::NewGuid().ToString()
-        submitted_at        = $RawResponse.submitDate ?? $RawResponse.submitted_at ?? (Get-Date -Format "o")
-        responder_email     = $RawResponse.responder ?? $RawResponse.responderEmail ?? "unknown"
-        responder_name      = $RawResponse.responderName ?? ""
+        id                  = $(if ($RawResponse.id) { $RawResponse.id } elseif ($RawResponse.responseId) { $RawResponse.responseId } else { [guid]::NewGuid().ToString() })
+        submitted_at        = $(if ($RawResponse.submitDate) { $RawResponse.submitDate } elseif ($RawResponse.submitted_at) { $RawResponse.submitted_at } else { Get-Date -Format "o" })
+        responder_email     = $(if ($RawResponse.responder) { $RawResponse.responder } elseif ($RawResponse.responderEmail) { $RawResponse.responderEmail } else { "unknown" })
+        responder_name      = $(if ($RawResponse.responderName) { $RawResponse.responderName } else { "" })
 
         # Core fields
         customer_name       = Get-FieldValue $RawResponse $FieldMapping.customer_name
@@ -85,13 +85,13 @@ function Get-FieldValue {
 
     # Strategy 1: Direct property name match
     $value = $Response.PSObject.Properties | Where-Object { $_.Name -eq $FieldName } | Select-Object -First 1
-    if ($value) { return ($value.Value ?? "").ToString().Trim() }
+    if ($value) { $v = $value.Value; if ($null -eq $v) { $v = "" }; return $v.ToString().Trim() }
 
     # Strategy 2: Case-insensitive partial match (form questions can be truncated)
     $value = $Response.PSObject.Properties | Where-Object {
         $_.Name -like "*$($FieldName.Substring(0, [Math]::Min(40, $FieldName.Length)))*"
     } | Select-Object -First 1
-    if ($value) { return ($value.Value ?? "").ToString().Trim() }
+    if ($value) { $v = $value.Value; if ($null -eq $v) { $v = "" }; return $v.ToString().Trim() }
 
     # Strategy 3: Check nested 'answers' array (from Forms API format)
     if ($Response.answers) {
