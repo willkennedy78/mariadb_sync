@@ -22,6 +22,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
 if (-not (Test-Path $ConfigPath)) {
@@ -241,9 +242,10 @@ function Invoke-Sync {
             $localPath = Join-Path $queuePath $file.name
             Get-SharePointFileContent -AccessToken $token -ItemId $file.id -OutFile $localPath
 
-            # Validate the downloaded file is parseable JSON
+            # Validate the downloaded file is parseable JSON (repair Power Automate quirks first)
             $testContent = (Get-Content -Path $localPath -Raw -Encoding UTF8).Trim()
-            $null = ConvertFrom-Json -InputObject $testContent
+            $repairedContent = Repair-MalformedJson -Text $testContent
+            $null = ConvertFrom-Json -InputObject $repairedContent
 
             Write-Log "Saved to: $localPath" "SUCCESS"
 

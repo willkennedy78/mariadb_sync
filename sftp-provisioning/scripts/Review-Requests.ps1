@@ -196,6 +196,8 @@ function Invoke-Review {
             if ($jsonText.Length -gt 0 -and [int]$jsonText[0] -eq 65279) {
                 $jsonText = $jsonText.Substring(1)
             }
+            # Repair malformed JSON from Power Automate (unquoted values, markdown fences)
+            $jsonText = Repair-MalformedJson -Text $jsonText
             $rawData = ConvertFrom-Json -InputObject $jsonText
 
             # Check if already parsed (has 'status' field) or needs parsing
