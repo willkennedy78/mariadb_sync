@@ -194,9 +194,51 @@ function Invoke-Review {
             $jsonText = (Get-Content $file.FullName -Raw -Encoding UTF8).Trim()
             $rawData = ConvertFrom-Json -InputObject $jsonText
 
-            # Check if already parsed (has 'status' field) or needs parsing
-            if ($rawData.status -and $rawData.customer_name) {
+            # If the JSON already has human-readable field names (from the fixed flow),
+            # normalize it in-place. Otherwise run it through the field-mapping parser.
+            if ($rawData.PSObject.Properties['customer_name'] -and $rawData.PSObject.Properties['status']) {
                 $request = $rawData
+
+                # Normalize environment/auth/delivery/IP fields
+                if ($request.environment -is [string]) {
+                    $request.environment = Resolve-Environment $request.environment
+                }
+                if ($request.auth_method -is [string] -and $request.auth_method -notmatch '^(password|publickey|both)$') {
+                    $request.auth_method = Resolve-AuthMethod $request.auth_method
+                }
+                if ($request.delivery_method -is [string] -and $request.delivery_method -notmatch '^(sms|whatsapp|telegram|email)$') {
+                    $request.delivery_method = Resolve-DeliveryMethod $request.delivery_method
+                }
+                if ($request.ip_whitelist -is [string]) {
+                    $request.ip_whitelist = Parse-IPWhitelist $request.ip_whitelist
+                }
+
+                # Add metadata and derived fields if missing
+                foreach ($prop in @('reviewed_by','reviewed_at','provisioned_at','notes')) {
+                    if (-not $request.PSObject.Properties[$prop]) {
+                        $request | Add-Member -NotePropertyName $prop -NotePropertyValue ""
+                    }
+                }
+                foreach ($prop in @('username_test','username_prod')) {
+                    if (-not $request.PSObject.Properties[$prop]) {
+                        $request | Add-Member -NotePropertyName $prop -NotePropertyValue ""
+                    }
+                }
+                if (-not $request.PSObject.Properties['password_generated']) {
+                    $request | Add-Member -NotePropertyName 'password_generated' -NotePropertyValue $false
+                }
+
+                # Generate usernames if not already set
+                if (-not $request.username_test -and -not $request.username_prod) {
+                    $sanitized = ConvertTo-SFTPUsername $request.customer_name
+                    $envs = $request.environment
+                    if ($envs -contains "test" -or $envs -contains "both") {
+                        $request.username_test = "${sanitized}_test"
+                    }
+                    if ($envs -contains "production" -or $envs -contains "both") {
+                        $request.username_prod = "${sanitized}_prod"
+                    }
+                }
             } else {
                 $request = ConvertTo-SFTPRequest -RawResponse $rawData -FieldMapping $fieldMapping
             }
