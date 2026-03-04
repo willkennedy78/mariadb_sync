@@ -33,6 +33,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ── Load modules ────────────────────────────────────────────────────────────────
 Import-Module (Join-Path $PSScriptRoot "modules\PasswordGenerator.psm1") -Force
