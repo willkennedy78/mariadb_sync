@@ -191,7 +191,12 @@ function Invoke-Review {
         $currentIndex++
 
         try {
-            $rawData = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
+            $jsonText = (Get-Content $file.FullName -Raw -Encoding UTF8).Trim()
+            # Strip UTF-8 BOM if present (PS 5.1's Set-Content -Encoding UTF8 adds BOM)
+            if ($jsonText.Length -gt 0 -and [int]$jsonText[0] -eq 65279) {
+                $jsonText = $jsonText.Substring(1)
+            }
+            $rawData = ConvertFrom-Json -InputObject $jsonText
 
             # Check if already parsed (has 'status' field) or needs parsing
             if ($rawData.status -and $rawData.customer_name) {

@@ -134,8 +134,9 @@ function Get-SharePointFileContent {
     $siteId  = $azureConfig.sharepoint_site_id
 
     $url = "https://graph.microsoft.com/v1.0/sites/$siteId/drives/$driveId/items/$ItemId/content"
-    $response = Invoke-RestMethod -Uri $url -Headers $headers -Method GET
-    return $response
+    # Use Invoke-WebRequest to get raw content (Invoke-RestMethod auto-deserializes JSON, which mangles it on re-serialize)
+    $response = Invoke-WebRequest -Uri $url -Headers $headers -Method GET -UseBasicParsing
+    return $response.Content
 }
 
 # ── Move processed file to a 'processed' subfolder in SharePoint ────────────────
@@ -228,10 +229,13 @@ function Invoke-Sync {
             $content = Get-SharePointFileContent -AccessToken $token -ItemId $file.id
             $localPath = Join-Path $queuePath $file.name
 
+            # Write without BOM (PS 5.1's -Encoding UTF8 adds BOM which breaks ConvertFrom-Json)
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
             if ($content -is [string]) {
-                Set-Content -Path $localPath -Value $content -Encoding UTF8
+                [System.IO.File]::WriteAllText($localPath, $content, $utf8NoBom)
             } else {
-                $content | ConvertTo-Json -Depth 10 | Set-Content -Path $localPath -Encoding UTF8
+                $jsonOut = $content | ConvertTo-Json -Depth 10
+                [System.IO.File]::WriteAllText($localPath, $jsonOut, $utf8NoBom)
             }
 
             Write-Log "Saved to: $localPath" "SUCCESS"
