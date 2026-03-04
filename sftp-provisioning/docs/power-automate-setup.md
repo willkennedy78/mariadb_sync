@@ -53,29 +53,44 @@ responses and writes them as JSON files to SharePoint for the provisioning pipel
 
 ```json
 {
-  "id": @{triggerOutputs()?['body/resourceData/responseId']},
-  "submitted_at": @{body('Get_response_details')?['submitDate']},
-  "responder_email": @{body('Get_response_details')?['responder']},
-  "responder_name": @{body('Get_response_details')?['responderName']},
-  "customer_name": @{body('Get_response_details')?['QUESTION_ID_FOR_CUSTOMER_NAME']},
-  "requester_name": @{body('Get_response_details')?['QUESTION_ID_FOR_REQUESTER_NAME']},
-  "environment": @{body('Get_response_details')?['QUESTION_ID_FOR_ENVIRONMENT']},
-  "auth_method": @{body('Get_response_details')?['QUESTION_ID_FOR_AUTH_METHOD']},
-  "password_restrictions": @{body('Get_response_details')?['QUESTION_ID_FOR_PASSWORD_RESTRICTIONS']},
-  "password_requirements_detail": @{body('Get_response_details')?['QUESTION_ID_FOR_PASSWORD_DETAIL']},
-  "public_key": @{body('Get_response_details')?['QUESTION_ID_FOR_PUBLIC_KEY']},
-  "delivery_method": @{body('Get_response_details')?['QUESTION_ID_FOR_DELIVERY_METHOD']},
-  "recipient_email": @{body('Get_response_details')?['QUESTION_ID_FOR_RECIPIENT_EMAIL']},
-  "recipient_phone": @{body('Get_response_details')?['QUESTION_ID_FOR_RECIPIENT_PHONE']},
-  "ip_whitelist": @{body('Get_response_details')?['QUESTION_ID_FOR_IP_WHITELIST']},
+  "id": "@{triggerOutputs()?['body/resourceData/responseId']}",
+  "submitted_at": "@{body('Get_response_details')?['submitDate']}",
+  "responder_email": "@{body('Get_response_details')?['responder']}",
+  "responder_name": "@{body('Get_response_details')?['responderName']}",
+  "customer_name": "@{body('Get_response_details')?['QUESTION_ID_FOR_CUSTOMER_NAME']}",
+  "requester_name": "@{body('Get_response_details')?['QUESTION_ID_FOR_REQUESTER_NAME']}",
+  "environment": "@{body('Get_response_details')?['QUESTION_ID_FOR_ENVIRONMENT']}",
+  "auth_method": "@{body('Get_response_details')?['QUESTION_ID_FOR_AUTH_METHOD']}",
+  "password_restrictions": "@{body('Get_response_details')?['QUESTION_ID_FOR_PASSWORD_RESTRICTIONS']}",
+  "password_requirements_detail": "@{body('Get_response_details')?['QUESTION_ID_FOR_PASSWORD_DETAIL']}",
+  "public_key": "@{body('Get_response_details')?['QUESTION_ID_FOR_PUBLIC_KEY']}",
+  "delivery_method": "@{body('Get_response_details')?['QUESTION_ID_FOR_DELIVERY_METHOD']}",
+  "recipient_email": "@{body('Get_response_details')?['QUESTION_ID_FOR_RECIPIENT_EMAIL']}",
+  "recipient_phone": "@{body('Get_response_details')?['QUESTION_ID_FOR_RECIPIENT_PHONE']}",
+  "ip_whitelist": "@{body('Get_response_details')?['QUESTION_ID_FOR_IP_WHITELIST']}",
   "status": "pending"
 }
+```
+
+**Critical**: Every `@{...}` expression **must** be wrapped in double quotes (`"@{...}"`).
+Without quotes, Power Automate inserts raw text and produces invalid JSON like:
+```
+"customer_name": Acme Corp,
+```
+instead of:
+```json
+"customer_name": "Acme Corp",
 ```
 
 **Important**: The `QUESTION_ID_FOR_*` placeholders will be automatically replaced with
 the actual dynamic content when you click the field names from the "Get response details"
 output in the Power Automate designer. Simply click each field in the JSON and select
 the corresponding form question from the dynamic content panel.
+
+> **Note**: If you add dynamic content by clicking from the panel (instead of typing the
+> template manually), Power Automate may strip the surrounding quotes. Always switch to
+> the **code view** ("Peek code" on the Compose step) to verify each value is wrapped
+> in `"@{...}"` with the quotes present.
 
 ## Step 6: Create the JSON File in SharePoint
 
@@ -139,9 +154,14 @@ Invoke-RestMethod -Uri "https://graph.microsoft.com/v1.0/sites/{site-id}/drives"
 - Ensure the flow is turned on (not paused)
 
 ### JSON file is empty or malformed
+- **Most common cause**: Dynamic content expressions in the Compose step are not wrapped
+  in double quotes. Open the Compose step, click **Peek code**, and verify every value
+  looks like `"@{body('Get_response_details')?['...']}"`  (with the double quotes).
+  Without quotes, the output will have unquoted values that are not valid JSON.
 - Check the Compose step output in the flow run details
 - Ensure all dynamic content references resolve correctly
-- Test with the "Peek code" option on the Compose step to verify the expression
+- After fixing, submit a new test response and verify the JSON file is valid by
+  opening it in SharePoint and checking the content
 
 ## Alternative: Direct Webhook Approach
 
