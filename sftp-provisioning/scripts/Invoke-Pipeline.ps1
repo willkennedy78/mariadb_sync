@@ -39,7 +39,10 @@ Import-Module (Join-Path $PSScriptRoot "modules\PasswordGenerator.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath), [System.Text.UTF8Encoding]::new($false))
+if (-not (Test-Path $ConfigPath)) {
+    throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
+}
+$configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
 $config    = ConvertFrom-Json -InputObject $configRaw
 $baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path

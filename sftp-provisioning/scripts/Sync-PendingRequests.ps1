@@ -21,7 +21,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath), [System.Text.UTF8Encoding]::new($false))
+if (-not (Test-Path $ConfigPath)) {
+    throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
+}
+$configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
 $config = ConvertFrom-Json -InputObject $configRaw
 $azureConfig = $config.azure_ad
 $queuePath   = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.queue_path "pending"
