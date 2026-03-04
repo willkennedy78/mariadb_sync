@@ -206,7 +206,13 @@ function Invoke-Review {
             }
         }
         catch {
+            $preview = try {
+                $raw = (Get-Content $file.FullName -Raw -Encoding UTF8)
+                if ($raw.Length -gt 200) { $raw.Substring(0, 200) + "..." } else { $raw }
+            } catch { "(could not read file)" }
             Write-Host "  ERROR: Failed to parse $($file.Name): $_" -ForegroundColor Red
+            Write-Host "  File content preview: $preview" -ForegroundColor DarkGray
+            Write-Host "  TIP: Run Sync-PendingRequests.ps1 -Force to re-download from SharePoint." -ForegroundColor Yellow
             continue
         }
 

@@ -15,8 +15,11 @@
     Path to the settings.json configuration file.
 .PARAMETER DryRun
     If specified, provision step will validate but not create accounts.
+.PARAMETER ForceSync
+    If specified, re-downloads files from SharePoint even if they already exist locally in pending.
 .EXAMPLE
     .\Invoke-Pipeline.ps1 -Action Full
+    .\Invoke-Pipeline.ps1 -Action Full -ForceSync
     .\Invoke-Pipeline.ps1 -Action Provision
     .\Invoke-Pipeline.ps1 -Action Provision -DryRun
 #>
@@ -29,7 +32,9 @@ param(
 
     [string]$ConfigPath = (Join-Path $PSScriptRoot "..\config\settings.json"),
 
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [switch]$ForceSync
 )
 
 $ErrorActionPreference = "Stop"
@@ -394,7 +399,9 @@ Write-Log "Pipeline started with action: $Action"
 
 switch ($Action) {
     "Sync" {
-        & (Join-Path $PSScriptRoot "Sync-PendingRequests.ps1") -ConfigPath $ConfigPath
+        $syncArgs = @{ ConfigPath = $ConfigPath }
+        if ($ForceSync) { $syncArgs.Force = $true }
+        & (Join-Path $PSScriptRoot "Sync-PendingRequests.ps1") @syncArgs
     }
     "Review" {
         & (Join-Path $PSScriptRoot "Review-Requests.ps1") -ConfigPath $ConfigPath
@@ -412,7 +419,9 @@ switch ($Action) {
         # Step 1: Sync
         Write-Host "  [1/4] Syncing new requests from SharePoint..." -ForegroundColor Cyan
         try {
-            & (Join-Path $PSScriptRoot "Sync-PendingRequests.ps1") -ConfigPath $ConfigPath
+            $syncArgs = @{ ConfigPath = $ConfigPath }
+            if ($ForceSync) { $syncArgs.Force = $true }
+            & (Join-Path $PSScriptRoot "Sync-PendingRequests.ps1") @syncArgs
         }
         catch {
             Write-Log "Sync failed: $_ -- continuing to review any existing pending requests." "WARNING"
