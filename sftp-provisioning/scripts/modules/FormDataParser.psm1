@@ -6,79 +6,6 @@
     request object ready for the approval and provisioning pipeline.
 #>
 
-function Repair-MalformedJson {
-    <#
-    .SYNOPSIS
-        Repairs malformed JSON produced by Power Automate (unquoted values, markdown fences).
-    .DESCRIPTION
-        Power Automate's "Compose" action can produce pseudo-JSON where string values
-        are not quoted. This function fixes the content so ConvertFrom-Json can parse it.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Text
-    )
-
-    # Strip markdown code fences (```json ... ```)
-    $Text = $Text -replace '^\s*```\w*\s*', ''
-    $Text = $Text -replace '\s*```\s*$', ''
-    $Text = $Text.Trim()
-
-    $lines = $Text -split "`n"
-    $result = [System.Collections.ArrayList]::new()
-
-    foreach ($line in $lines) {
-        $trimmed = $line.TrimEnd()
-
-        # Match lines like:  "key": value,  or  "key": value
-        if ($trimmed -match '^(\s*"[^"]+")\s*:\s*(.*)$') {
-            $keyPart = $Matches[1]
-            $valuePart = $Matches[2].TrimEnd()
-
-            # Detect and strip trailing comma
-            $trailingComma = ''
-            if ($valuePart -match ',\s*$') {
-                $trailingComma = ','
-                $valuePart = ($valuePart -replace ',\s*$', '').TrimEnd()
-            }
-
-            $needsQuoting = $false
-
-            if ($valuePart -eq '' -or $valuePart -eq $null) {
-                # Empty value: "key":  or "key": ,
-                $needsQuoting = $true
-                $valuePart = ''
-            }
-            elseif ($valuePart -match '^\d+(\.\d+)?$') {
-                # Number - valid as-is
-            }
-            elseif ($valuePart -eq 'true' -or $valuePart -eq 'false' -or $valuePart -eq 'null') {
-                # Boolean/null - valid as-is
-            }
-            elseif ($valuePart -match '^".*"$') {
-                # Already quoted - valid as-is
-            }
-            elseif ($valuePart -match '^\[' -or $valuePart -match '^\{') {
-                # Array or object start - valid as-is
-            }
-            else {
-                $needsQuoting = $true
-            }
-
-            if ($needsQuoting) {
-                # Escape backslashes and double quotes inside the value
-                $escaped = $valuePart -replace '\\', '\\' -replace '"', '\"'
-                $line = "${keyPart}: `"${escaped}`"${trailingComma}"
-            }
-        }
-
-        $null = $result.Add($line)
-    }
-
-    return $result -join "`n"
-}
-
 function ConvertTo-SFTPRequest {
     <#
     .SYNOPSIS
@@ -312,4 +239,4 @@ function ConvertTo-SFTPUsername {
     return $username
 }
 
-Export-ModuleMember -Function Repair-MalformedJson, ConvertTo-SFTPRequest, ConvertTo-SFTPUsername, Parse-IPWhitelist, Resolve-Environment, Resolve-AuthMethod
+Export-ModuleMember -Function ConvertTo-SFTPRequest, ConvertTo-SFTPUsername, Parse-IPWhitelist, Resolve-Environment, Resolve-AuthMethod

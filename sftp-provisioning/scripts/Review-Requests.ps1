@@ -192,12 +192,6 @@ function Invoke-Review {
 
         try {
             $jsonText = (Get-Content $file.FullName -Raw -Encoding UTF8).Trim()
-            # Strip UTF-8 BOM if present (PS 5.1's Set-Content -Encoding UTF8 adds BOM)
-            if ($jsonText.Length -gt 0 -and [int]$jsonText[0] -eq 65279) {
-                $jsonText = $jsonText.Substring(1)
-            }
-            # Repair malformed JSON from Power Automate (unquoted values, markdown fences)
-            $jsonText = Repair-MalformedJson -Text $jsonText
             $rawData = ConvertFrom-Json -InputObject $jsonText
 
             # Check if already parsed (has 'status' field) or needs parsing
