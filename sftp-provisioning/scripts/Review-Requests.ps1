@@ -21,9 +21,22 @@ $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config    = $configRaw | ConvertFrom-Json
-$baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
+if (-not (Test-Path $ConfigPath)) {
+    throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
+}
+$ConfigPath = (Resolve-Path $ConfigPath).Path
+$configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
+try {
+    $config = ConvertFrom-Json -InputObject $configRaw
+} catch {
+    throw "Failed to parse '$ConfigPath': $($_.Exception.Message)`nCheck for missing closing braces or trailing commas in your JSON."
+}
+foreach ($section in @('general', 'form_field_mapping')) {
+    if (-not $config.$section) {
+        throw "Configuration '$ConfigPath' is missing required section: '$section'"
+    }
+}
+$baseDir   = Split-Path (Split-Path $ConfigPath -Parent) -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
 $pendingPath  = Join-Path $queueBase "pending"
@@ -178,7 +191,7 @@ function Invoke-Review {
         $currentIndex++
 
         try {
-            $rawData = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $rawData = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
 
             # Check if already parsed (has 'status' field) or needs parsing
             if ($rawData.status -and $rawData.customer_name) {

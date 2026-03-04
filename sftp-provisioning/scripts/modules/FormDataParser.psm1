@@ -96,7 +96,7 @@ function Get-FieldValue {
     # Strategy 3: Check nested 'answers' array (from Forms API format)
     if ($Response.answers) {
         $answers = if ($Response.answers -is [string]) {
-            $Response.answers | ConvertFrom-Json
+            ConvertFrom-Json -InputObject $Response.answers
         } else {
             $Response.answers
         }

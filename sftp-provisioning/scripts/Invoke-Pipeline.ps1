@@ -39,9 +39,22 @@ Import-Module (Join-Path $PSScriptRoot "modules\PasswordGenerator.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "modules\FormDataParser.psm1") -Force
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config    = $configRaw | ConvertFrom-Json
-$baseDir   = Split-Path $ConfigPath -Parent | Split-Path -Parent
+if (-not (Test-Path $ConfigPath)) {
+    throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
+}
+$ConfigPath = (Resolve-Path $ConfigPath).Path
+$configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
+try {
+    $config = ConvertFrom-Json -InputObject $configRaw
+} catch {
+    throw "Failed to parse '$ConfigPath': $($_.Exception.Message)`nCheck for missing closing braces or trailing commas in your JSON."
+}
+foreach ($section in @('general', 'bitvise', 'form_field_mapping')) {
+    if (-not $config.$section) {
+        throw "Configuration '$ConfigPath' is missing required section: '$section'"
+    }
+}
+$baseDir   = Split-Path (Split-Path $ConfigPath -Parent) -Parent
 $queueBase = Join-Path $baseDir $config.general.queue_path
 
 $approvedPath  = Join-Path $queueBase "approved"
@@ -67,6 +80,15 @@ function Write-Log {
     }
 }
 
+# ── Helpers ───────────────────────────────────────────────────────────────────────
+function Resolve-SecretValue {
+    param([string]$ConfigValue)
+    $fromEnv = [Environment]::GetEnvironmentVariable($ConfigValue)
+    if ($fromEnv) { return $fromEnv }
+    if ($ConfigValue -and $ConfigValue -notmatch '^[A-Z_]+$') { return $ConfigValue }
+    return $null
+}
+
 # ── PS Remoting ──────────────────────────────────────────────────────────────────
 function New-BitviseSession {
     <#
@@ -77,10 +99,9 @@ function New-BitviseSession {
     $server        = $bitviseConfig.computer_name
 
     $credUser    = $bitviseConfig.credential_username
-    $credPassEnv = $bitviseConfig.credential_password_env_var
-    $credPass    = [Environment]::GetEnvironmentVariable($credPassEnv)
+    $credPass    = Resolve-SecretValue $bitviseConfig.credential_password_env_var
     if (-not $credPass) {
-        throw "Password not found in environment variable '$credPassEnv'."
+        throw "Cannot resolve Bitvise password. Set environment variable '$($bitviseConfig.credential_password_env_var)' or provide the value directly in settings.json."
     }
 
     $secPass    = ConvertTo-SecureString $credPass -AsPlainText -Force
@@ -145,7 +166,7 @@ function Invoke-RemoteBitviseCommand {
     # Extract JSON from output (the script outputs JSON at the end)
     $jsonMatch = [regex]::Match($outputStr, '\{[\s\S]*\}$')
     if ($jsonMatch.Success) {
-        return $jsonMatch.Value | ConvertFrom-Json
+        return ConvertFrom-Json -InputObject $jsonMatch.Value
     }
 
     Write-Log "Remote output: $outputStr" "WARNING"
@@ -188,7 +209,7 @@ function Invoke-Provision {
     foreach ($file in $approvedFiles) {
         Write-Log "Processing: $($file.Name)"
 
-        $request = Get-Content $file.FullName -Raw | ConvertFrom-Json
+        $request = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
         $requestJson = $request | ConvertTo-Json -Depth 10 -Compress
 
         # Determine environments to provision
@@ -345,7 +366,7 @@ function Invoke-Report {
         Write-Host ""
         Write-Host "  Recent Completions:" -ForegroundColor Green
         foreach ($file in $recentCompleted) {
-            $req = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $req = ConvertFrom-Json -InputObject (Get-Content $file.FullName -Raw -Encoding UTF8)
             Write-Host "    - $($req.customer_name) ($($req.environment -join ', ')) - $($req.provisioned_at)" -ForegroundColor Gray
         }
     }
@@ -358,7 +379,7 @@ function Invoke-Report {
             Write-Host ""
             Write-Host "  PENDING CREDENTIAL DELIVERIES: $($pendingCreds.Count)" -ForegroundColor Yellow
             foreach ($cred in $pendingCreds) {
-                $credData = Get-Content $cred.FullName -Raw | ConvertFrom-Json
+                $credData = ConvertFrom-Json -InputObject (Get-Content $cred.FullName -Raw -Encoding UTF8)
                 Write-Host "    - $($credData.username) -> $($credData.recipient_email) via $($credData.delivery_method)" -ForegroundColor Yellow
             }
         }

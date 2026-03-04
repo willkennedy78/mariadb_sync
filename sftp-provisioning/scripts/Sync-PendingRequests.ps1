@@ -21,11 +21,25 @@ param(
 $ErrorActionPreference = "Stop"
 
 # ── Load configuration ──────────────────────────────────────────────────────────
-$configRaw = [System.IO.File]::ReadAllText((Resolve-Path $ConfigPath))
-$config = $configRaw | ConvertFrom-Json
+if (-not (Test-Path $ConfigPath)) {
+    throw "Configuration file not found: $ConfigPath (resolved from PSScriptRoot='$PSScriptRoot')"
+}
+$ConfigPath = (Resolve-Path $ConfigPath).Path
+$configRaw = (Get-Content -Path $ConfigPath -Raw -Encoding UTF8).Trim()
+try {
+    $config = ConvertFrom-Json -InputObject $configRaw
+} catch {
+    throw "Failed to parse '$ConfigPath': $($_.Exception.Message)`nCheck for missing closing braces or trailing commas in your JSON."
+}
+foreach ($section in @('general', 'azure_ad', 'form_field_mapping')) {
+    if (-not $config.$section) {
+        throw "Configuration '$ConfigPath' is missing required section: '$section'"
+    }
+}
 $azureConfig = $config.azure_ad
-$queuePath   = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.queue_path "pending"
-$logPath     = Join-Path (Split-Path $ConfigPath -Parent | Split-Path -Parent) $config.general.log_path
+$baseDir     = Split-Path (Split-Path $ConfigPath -Parent) -Parent
+$queuePath   = Join-Path (Join-Path $baseDir $config.general.queue_path) "pending"
+$logPath     = Join-Path $baseDir $config.general.log_path
 
 # Ensure directories exist
 New-Item -ItemType Directory -Path $queuePath -Force | Out-Null
@@ -48,10 +62,18 @@ function Write-Log {
 }
 
 # ── Authenticate to Microsoft Graph ─────────────────────────────────────────────
+function Resolve-SecretValue {
+    param([string]$ConfigValue)
+    $fromEnv = [Environment]::GetEnvironmentVariable($ConfigValue)
+    if ($fromEnv) { return $fromEnv }
+    if ($ConfigValue -and $ConfigValue -notmatch '^[A-Z_]+$') { return $ConfigValue }
+    return $null
+}
+
 function Get-GraphAccessToken {
-    $clientSecret = [Environment]::GetEnvironmentVariable($azureConfig.client_secret_env_var)
+    $clientSecret = Resolve-SecretValue $azureConfig.client_secret_env_var
     if (-not $clientSecret) {
-        throw "Environment variable '$($azureConfig.client_secret_env_var)' is not set. Set it with your Azure AD app client secret."
+        throw "Cannot resolve client secret. Set environment variable '$($azureConfig.client_secret_env_var)' or provide the secret value directly in settings.json."
     }
 
     $tokenBody = @{
