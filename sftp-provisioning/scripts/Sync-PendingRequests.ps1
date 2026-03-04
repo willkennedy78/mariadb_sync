@@ -15,7 +15,9 @@
 
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot "..\config\settings.json")
+    [string]$ConfigPath = (Join-Path $PSScriptRoot "..\config\settings.json"),
+
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -126,7 +128,8 @@ function Get-SharePointPendingFiles {
 function Get-SharePointFileContent {
     param(
         [string]$AccessToken,
-        [string]$ItemId
+        [string]$ItemId,
+        [string]$OutFile
     )
 
     $headers = @{ "Authorization" = "Bearer $AccessToken" }
@@ -134,9 +137,12 @@ function Get-SharePointFileContent {
     $siteId  = $azureConfig.sharepoint_site_id
 
     $url = "https://graph.microsoft.com/v1.0/sites/$siteId/drives/$driveId/items/$ItemId/content"
-    # Use Invoke-WebRequest to get raw content (Invoke-RestMethod auto-deserializes JSON, which mangles it on re-serialize)
-    $response = Invoke-WebRequest -Uri $url -Headers $headers -Method GET -UseBasicParsing
-    return $response.Content
+
+    # Download directly to file to avoid encoding issues.
+    # Invoke-RestMethod auto-deserializes JSON (mangling it on round-trip).
+    # Invoke-WebRequest .Content may return byte[] for non-text content types.
+    # -OutFile bypasses both problems by writing the raw response body to disk.
+    Invoke-WebRequest -Uri $url -Headers $headers -Method GET -UseBasicParsing -OutFile $OutFile
 }
 
 # ── Move processed file to a 'processed' subfolder in SharePoint ────────────────
@@ -190,11 +196,17 @@ function Move-SharePointFile {
 function Invoke-Sync {
     Write-Log "=== Starting SFTP request sync ===" "INFO"
 
-    # Get existing local files to avoid duplicates
-    $existingFiles = Get-ChildItem -Path $queuePath -Filter "*.json" -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.BaseName }
+    # Get existing local files to avoid duplicates (skip when -Force is used for pending files)
+    $existingFiles = @()
 
-    # Also check approved, completed, rejected folders
+    if (-not $Force) {
+        $existingFiles += Get-ChildItem -Path $queuePath -Filter "*.json" -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.BaseName }
+    } else {
+        Write-Log "Force mode: will re-download files already in pending queue." "WARNING"
+    }
+
+    # Always skip files that have progressed past pending (approved, completed, rejected)
     $allQueueBase = Split-Path $queuePath -Parent
     foreach ($subdir in @("approved", "completed", "rejected")) {
         $subPath = Join-Path $allQueueBase $subdir
@@ -226,17 +238,12 @@ function Invoke-Sync {
         Write-Log "Downloading new request: $($file.name)"
 
         try {
-            $content = Get-SharePointFileContent -AccessToken $token -ItemId $file.id
             $localPath = Join-Path $queuePath $file.name
+            Get-SharePointFileContent -AccessToken $token -ItemId $file.id -OutFile $localPath
 
-            # Write without BOM (PS 5.1's -Encoding UTF8 adds BOM which breaks ConvertFrom-Json)
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            if ($content -is [string]) {
-                [System.IO.File]::WriteAllText($localPath, $content, $utf8NoBom)
-            } else {
-                $jsonOut = $content | ConvertTo-Json -Depth 10
-                [System.IO.File]::WriteAllText($localPath, $jsonOut, $utf8NoBom)
-            }
+            # Validate the downloaded file is parseable JSON
+            $testContent = (Get-Content -Path $localPath -Raw -Encoding UTF8).Trim()
+            $null = ConvertFrom-Json -InputObject $testContent
 
             Write-Log "Saved to: $localPath" "SUCCESS"
 
