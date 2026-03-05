@@ -226,7 +226,6 @@ function Invoke-SshBitviseCommand {
     $remoteCommand = "powershell.exe -ExecutionPolicy Bypass -EncodedCommand $encodedCmd"
 
     # Build client-specific arguments
-    $usePlinkStdinPassword = $false
     if ($sshClient -eq "plink") {
         $sshArgs = @(
             "-P", $sshPort,     # Port (uppercase -P for plink)
@@ -239,10 +238,12 @@ function Invoke-SshBitviseCommand {
         } else {
             $sshPassword = Resolve-SecretValue $bitviseConfig.credential_password_env_var
             if ($sshPassword) {
-                # Use stdin to feed the password. This works with both
-                # "password" and "keyboard-interactive" server auth methods,
-                # whereas -pw only works with plain password auth.
-                $usePlinkStdinPassword = $true
+                # Use -pw WITHOUT -batch. When -batch is absent, plink will
+                # automatically use the -pw password to answer both plain
+                # "password" and "keyboard-interactive" auth prompts.
+                # -batch suppresses all interactive prompts, which breaks
+                # keyboard-interactive auth even when -pw is provided.
+                $sshArgs += "-pw", $sshPassword
             }
         }
         $sshArgs += $server
@@ -263,13 +264,7 @@ function Invoke-SshBitviseCommand {
     }
 
     try {
-        if ($usePlinkStdinPassword) {
-            # Pipe password via stdin so plink can answer keyboard-interactive prompts.
-            # echo "password" | plink ... sends the password followed by a newline.
-            $output = ($sshPassword | & $sshExe @sshArgs) 2>&1
-        } else {
-            $output = & $sshExe @sshArgs 2>&1
-        }
+        $output = & $sshExe @sshArgs 2>&1
         $exitCode = $LASTEXITCODE
     }
     catch {
