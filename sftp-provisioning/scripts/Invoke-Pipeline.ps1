@@ -102,9 +102,10 @@ function Invoke-RemoteBitviseCommand {
     .SYNOPSIS
         Executes the provisioning script on the Bitvise server via SSH or PS Remoting.
     .DESCRIPTION
-        SSH transport (default): Uses ssh.exe to run the pre-deployed provisioning
-        script on the remote server. Each call is independent - no session to manage,
-        and COM objects work because SSH provides a proper logon session.
+        SSH transport (default): Uses plink.exe or ssh.exe to run the pre-deployed
+        provisioning script on the remote server. Each call is independent — no
+        session to manage, and COM objects work because SSH provides a proper logon
+        session.
 
         PSRemoting transport (legacy): Uses Invoke-Command -FilePath via WinRM.
     #>
@@ -172,9 +173,15 @@ function Invoke-SshBitviseCommand {
     .SYNOPSIS
         Executes the provisioning script on the Bitvise server over SSH.
     .DESCRIPTION
-        Builds a PowerShell command block, encodes it with -EncodedCommand, and
-        runs it over SSH. The request JSON is base64-encoded to avoid escaping
-        issues across the SSH/shell boundary.
+        Supports two SSH clients:
+          - plink (default): PuTTY's command-line SSH client. Supports -pw for
+            password auth — works on Server 2016 with no OS features needed.
+            Download plink.exe and put it on PATH or set ssh_client_path.
+          - ssh: OpenSSH client (Windows 10 1809+ / Server 2019+). Key auth only.
+
+        The request JSON is base64-encoded to avoid escaping issues across the
+        SSH/shell boundary. The entire remote command is passed via
+        powershell.exe -EncodedCommand.
     #>
     param(
         [Parameter(Mandatory)][string]$RequestJson,
@@ -190,11 +197,16 @@ function Invoke-SshBitviseCommand {
     $sshUser       = if ($bitviseConfig.ssh_user) { $bitviseConfig.ssh_user } else { "service_sftp" }
     $sshPort       = if ($bitviseConfig.ssh_port) { $bitviseConfig.ssh_port } else { 22 }
     $sshKeyPath    = $bitviseConfig.ssh_key_path
+    $sshClient     = if ($bitviseConfig.ssh_client) { $bitviseConfig.ssh_client } else { "plink" }
+    $sshClientPath = $bitviseConfig.ssh_client_path
     $remoteScript  = $bitviseConfig.remote_script_path
 
     if (-not $remoteScript) {
         return @{ success = $false; message = "SSH transport requires 'remote_script_path' in bitvise config." }
     }
+
+    # Resolve the SSH client executable
+    $sshExe = if ($sshClientPath) { $sshClientPath } else { "$sshClient.exe" }
 
     # Base64-encode the JSON to safely pass through SSH
     $jsonB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($RequestJson))
@@ -211,30 +223,52 @@ function Invoke-SshBitviseCommand {
 
     # Encode the entire block for powershell.exe -EncodedCommand
     $encodedCmd = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($remoteBlock))
+    $remoteCommand = "powershell.exe -ExecutionPolicy Bypass -EncodedCommand $encodedCmd"
 
-    # Build SSH arguments
-    $sshArgs = @(
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "BatchMode=yes",
-        "-p", $sshPort
-    )
-    if ($sshKeyPath) {
-        $sshArgs += "-i", $sshKeyPath
+    # Build client-specific arguments
+    if ($sshClient -eq "plink") {
+        $sshArgs = @(
+            "-batch",           # Never prompt interactively
+            "-P", $sshPort,     # Port (uppercase -P for plink)
+            "-l", $sshUser      # Login username
+        )
+        # Auth: key file takes priority, otherwise fall back to password
+        if ($sshKeyPath) {
+            $sshArgs += "-i", $sshKeyPath
+        } else {
+            $sshPassword = Resolve-SecretValue $bitviseConfig.credential_password_env_var
+            if ($sshPassword) {
+                $sshArgs += "-pw", $sshPassword
+            }
+        }
+        $sshArgs += $server
+        $sshArgs += $remoteCommand
     }
-    $sshArgs += "$sshUser@$server"
-    $sshArgs += "powershell.exe -ExecutionPolicy Bypass -EncodedCommand $encodedCmd"
+    else {
+        # OpenSSH ssh.exe
+        $sshArgs = @(
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "BatchMode=yes",
+            "-p", $sshPort
+        )
+        if ($sshKeyPath) {
+            $sshArgs += "-i", $sshKeyPath
+        }
+        $sshArgs += "$sshUser@$server"
+        $sshArgs += $remoteCommand
+    }
 
     try {
-        $output = & ssh.exe @sshArgs 2>&1
+        $output = & $sshExe @sshArgs 2>&1
         $exitCode = $LASTEXITCODE
     }
     catch {
         Write-Log "SSH execution error: $_" "ERROR"
-        return @{ success = $false; message = "SSH failed: $_" }
+        return @{ success = $false; message = "SSH failed ($sshExe): $_" }
     }
 
     if ($null -eq $output -and $exitCode -ne 0) {
-        return @{ success = $false; message = "SSH returned exit code $exitCode with no output. Check SSH key auth is configured." }
+        return @{ success = $false; message = "SSH returned exit code $exitCode with no output. Verify $sshExe is on PATH and credentials are correct." }
     }
 
     return ConvertFrom-RemoteOutput $output
@@ -295,7 +329,7 @@ function Invoke-Provision {
             return
         }
     } else {
-        Write-Log "Using SSH to $($config.bitvise.computer_name):$($config.bitvise.ssh_port) as $($config.bitvise.ssh_user)"
+        Write-Log "Using SSH ($( if ($config.bitvise.ssh_client) { $config.bitvise.ssh_client } else { 'plink' })) to $($config.bitvise.computer_name):$($config.bitvise.ssh_port) as $($config.bitvise.ssh_user)"
     }
 
     $passwordDefaults = @{}
