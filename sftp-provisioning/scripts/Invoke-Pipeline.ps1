@@ -226,6 +226,7 @@ function Invoke-SshBitviseCommand {
     $remoteCommand = "powershell.exe -ExecutionPolicy Bypass -EncodedCommand $encodedCmd"
 
     # Build client-specific arguments
+    $plinkPasswordAuth = $false
     if ($sshClient -eq "plink") {
         $sshArgs = @(
             "-P", $sshPort,     # Port (uppercase -P for plink)
@@ -238,12 +239,10 @@ function Invoke-SshBitviseCommand {
         } else {
             $sshPassword = Resolve-SecretValue $bitviseConfig.credential_password_env_var
             if ($sshPassword) {
-                # Use -pw WITHOUT -batch. When -batch is absent, plink will
-                # automatically use the -pw password to answer both plain
-                # "password" and "keyboard-interactive" auth prompts.
-                # -batch suppresses all interactive prompts, which breaks
-                # keyboard-interactive auth even when -pw is provided.
-                $sshArgs += "-pw", $sshPassword
+                # For keyboard-interactive auth we must feed the password via
+                # stdin using a process object.  Neither -pw nor simple pipe
+                # operators reliably answer keyboard-interactive prompts.
+                $plinkPasswordAuth = $true
             }
         }
         $sshArgs += $server
@@ -264,8 +263,40 @@ function Invoke-SshBitviseCommand {
     }
 
     try {
-        $output = & $sshExe @sshArgs 2>&1
-        $exitCode = $LASTEXITCODE
+        if ($plinkPasswordAuth) {
+            # Use System.Diagnostics.Process to control stdin directly.
+            # This lets us write the password exactly when plink expects it
+            # for keyboard-interactive authentication.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $sshExe
+            $psi.Arguments = ($sshArgs | ForEach-Object {
+                if ($_ -match '\s') { "`"$_`"" } else { $_ }
+            }) -join ' '
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardInput = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.CreateNoWindow = $true
+
+            $proc = New-Object System.Diagnostics.Process
+            $proc.StartInfo = $psi
+            $proc.Start() | Out-Null
+
+            # Feed password followed by newline, then close stdin
+            $proc.StandardInput.WriteLine($sshPassword)
+            $proc.StandardInput.Close()
+
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $stderr = $proc.StandardError.ReadToEnd()
+            $proc.WaitForExit()
+            $exitCode = $proc.ExitCode
+
+            # Combine stdout/stderr like 2>&1 would
+            $output = if ($stderr) { "$stdout`n$stderr" } else { $stdout }
+        } else {
+            $output = & $sshExe @sshArgs 2>&1
+            $exitCode = $LASTEXITCODE
+        }
     }
     catch {
         Write-Log "SSH execution error: $_" "ERROR"
