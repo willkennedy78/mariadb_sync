@@ -18,6 +18,8 @@
         "credential_password_env_var": "BITVISE_ADMIN_PASSWORD",
         "use_ssl": false,
         "transport": "ssh",
+        "ssh_client": "plink",
+        "ssh_client_path": "",
         "ssh_port": 22,
         "ssh_user": "service_sftp",
         "ssh_key_path": "",
