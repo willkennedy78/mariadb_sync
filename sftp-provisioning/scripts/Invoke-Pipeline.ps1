@@ -239,9 +239,12 @@ function Invoke-SshBitviseCommand {
         } else {
             $sshPassword = Resolve-SecretValue $bitviseConfig.credential_password_env_var
             if ($sshPassword) {
-                # For keyboard-interactive auth we must feed the password via
-                # stdin using a process object.  Neither -pw nor simple pipe
-                # operators reliably answer keyboard-interactive prompts.
+                # -pw handles both plain password and keyboard-interactive auth
+                # in PuTTY/plink 0.78+.  We use a Process object (instead of &)
+                # to avoid PowerShell converting plink's stderr info messages
+                # into ErrorRecord objects, which become terminating exceptions
+                # when $ErrorActionPreference is 'Stop'.
+                $sshArgs += "-pw", $sshPassword
                 $plinkPasswordAuth = $true
             }
         }
@@ -264,16 +267,16 @@ function Invoke-SshBitviseCommand {
 
     try {
         if ($plinkPasswordAuth) {
-            # Use System.Diagnostics.Process to control stdin directly.
-            # This lets us write the password exactly when plink expects it
-            # for keyboard-interactive authentication.
+            # Run plink via System.Diagnostics.Process to isolate stderr
+            # from PowerShell's error stream.  Do NOT redirect stdin —
+            # plink reads keyboard-interactive responses from its own
+            # console/pty, not from stdin.
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $sshExe
             $psi.Arguments = ($sshArgs | ForEach-Object {
                 if ($_ -match '\s') { "`"$_`"" } else { $_ }
             }) -join ' '
             $psi.UseShellExecute = $false
-            $psi.RedirectStandardInput = $true
             $psi.RedirectStandardOutput = $true
             $psi.RedirectStandardError = $true
             $psi.CreateNoWindow = $true
@@ -281,11 +284,6 @@ function Invoke-SshBitviseCommand {
             $proc = New-Object System.Diagnostics.Process
             $proc.StartInfo = $psi
             $proc.Start() | Out-Null
-
-            # Feed password for keyboard-interactive, but keep stdin open.
-            # Closing stdin sends EOF to the SSH channel which kills the
-            # session before the remote command can execute.
-            $proc.StandardInput.WriteLine($sshPassword)
 
             # Read stdout/stderr asynchronously to avoid deadlock when
             # either stream's buffer fills while we block on the other.
@@ -298,8 +296,8 @@ function Invoke-SshBitviseCommand {
             $stderr = $stderrTask.GetAwaiter().GetResult()
             $exitCode = $proc.ExitCode
 
-            # Combine stdout/stderr like 2>&1 would
-            $output = if ($stderr) { "$stdout`n$stderr" } else { $stdout }
+            if ($stderr) { Write-Log "plink stderr: $stderr" "WARN" }
+            $output = $stdout
         } else {
             $output = & $sshExe @sshArgs 2>&1
             $exitCode = $LASTEXITCODE
