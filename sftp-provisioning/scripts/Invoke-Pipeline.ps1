@@ -114,11 +114,15 @@ function New-BitviseSession {
     $credential = New-Object System.Management.Automation.PSCredential($credUser, $secPass)
 
     $sessionParams = @{
-        ComputerName = $server
-        Credential   = $credential
+        ComputerName       = $server
+        Credential         = $credential
+        EnableNetworkAccess = $true
     }
     if ($bitviseConfig.use_ssl) {
         $sessionParams.UseSSL = $true
+    }
+    if ($bitviseConfig.authentication) {
+        $sessionParams.Authentication = $bitviseConfig.authentication
     }
 
     New-PSSession @sessionParams
@@ -162,9 +166,15 @@ function Invoke-RemoteBitviseCommand {
 
     Write-Log "Executing provisioning script on $($Session.ComputerName) ($ProvisionAction / $Environment)"
 
-    $output = Invoke-Command -Session $Session `
-        -FilePath $localScript `
-        -ArgumentList $RequestJson, $ProvisionAction, $Environment, $Password, $comObject, $baseMountPath
+    try {
+        $output = Invoke-Command -Session $Session `
+            -FilePath $localScript `
+            -ArgumentList $RequestJson, $ProvisionAction, $Environment, $Password, $comObject, $baseMountPath
+    }
+    catch {
+        Write-Log "Remote command failed: $_" "ERROR"
+        return @{ success = $false; message = "Remote execution failed: $_" }
+    }
 
     # Parse the output as JSON result
     $outputStr = ($output | Out-String).Trim()
@@ -232,6 +242,24 @@ function Invoke-Provision {
 
         foreach ($env in $environments) {
             Write-Log "  Provisioning for $env environment..."
+
+            # ── Check session health and reconnect if needed ─────────────
+            if (-not $session -or $session.State -ne 'Opened') {
+                Write-Log "  Session is $( if ($session) { $session.State } else { 'null' } ) - reconnecting..." "WARNING"
+                if ($session) {
+                    Remove-PSSession $session -ErrorAction SilentlyContinue
+                }
+                try {
+                    $session = New-BitviseSession
+                    Write-Log "  Reconnected to $($session.ComputerName)." "SUCCESS"
+                }
+                catch {
+                    Write-Log "  Failed to reconnect: $_" "ERROR"
+                    $allSuccess = $false
+                    $provisionResults += @{ success = $false; message = "Session reconnection failed: $_"; environment = $env }
+                    continue
+                }
+            }
 
             # ── Generate password if needed ──────────────────────────────────
             $password = ""
