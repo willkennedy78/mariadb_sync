@@ -5,7 +5,7 @@
     Coordinates the full workflow:
       1. Sync   - Download new form responses from SharePoint
       2. Review - Interactive admin approval
-      3. Provision - Create accounts on Bitvise server via PS Remoting
+      3. Provision - Create accounts on Bitvise server via SSH or PS Remoting
       4. Report - Output summary of actions taken
 
     Can run individual stages or the full pipeline.
@@ -95,51 +95,20 @@ function Resolve-SecretValue {
     return $null
 }
 
-# ── PS Remoting ──────────────────────────────────────────────────────────────────
-function New-BitviseSession {
-    <#
-    .SYNOPSIS
-        Creates a PS Remoting session to the Bitvise SSH Server machine.
-    #>
-    $bitviseConfig = $config.bitvise
-    $server        = $bitviseConfig.computer_name
-
-    $credUser    = $bitviseConfig.credential_username
-    $credPass    = Resolve-SecretValue $bitviseConfig.credential_password_env_var
-    if (-not $credPass) {
-        throw "Cannot resolve Bitvise password. Set environment variable '$($bitviseConfig.credential_password_env_var)' or provide the value directly in settings.json."
-    }
-
-    $secPass    = ConvertTo-SecureString $credPass -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential($credUser, $secPass)
-
-    $sessionParams = @{
-        ComputerName       = $server
-        Credential         = $credential
-        EnableNetworkAccess = $true
-    }
-    if ($bitviseConfig.use_ssl) {
-        $sessionParams.UseSSL = $true
-    }
-    if ($bitviseConfig.authentication) {
-        $sessionParams.Authentication = $bitviseConfig.authentication
-    }
-
-    New-PSSession @sessionParams
-}
+# ── Remote Execution ─────────────────────────────────────────────────────────────
 
 function Invoke-RemoteBitviseCommand {
     <#
     .SYNOPSIS
-        Executes the provisioning script on the Bitvise server via PS Remoting.
+        Executes the provisioning script on the Bitvise server via SSH or PS Remoting.
     .DESCRIPTION
-        Uses Invoke-Command -FilePath to send the local provisioning script to the
-        remote machine and execute it there. No need to pre-deploy the script.
+        SSH transport (default): Uses ssh.exe to run the pre-deployed provisioning
+        script on the remote server. Each call is independent - no session to manage,
+        and COM objects work because SSH provides a proper logon session.
+
+        PSRemoting transport (legacy): Uses Invoke-Command -FilePath via WinRM.
     #>
     param(
-        [Parameter(Mandatory)]
-        [System.Management.Automation.Runspaces.PSSession]$Session,
-
         [Parameter(Mandatory)]
         [string]$RequestJson,
 
@@ -150,11 +119,15 @@ function Invoke-RemoteBitviseCommand {
         [Parameter(Mandatory)]
         [string]$Environment,
 
-        [string]$Password = ""
+        [string]$Password = "",
+
+        # Only used for psremoting transport
+        [System.Management.Automation.Runspaces.PSSession]$Session
     )
 
     $bitviseConfig = $config.bitvise
     $comObject     = $bitviseConfig.com_object_name
+    $transport     = if ($bitviseConfig.transport) { $bitviseConfig.transport } else { "psremoting" }
 
     $baseMountPath = if ($Environment -eq "test") {
         $bitviseConfig.base_mount_path_test
@@ -162,9 +135,24 @@ function Invoke-RemoteBitviseCommand {
         $bitviseConfig.base_mount_path_prod
     }
 
-    $localScript = Join-Path $PSScriptRoot "Provision-SFTPAccount.ps1"
+    Write-Log "Executing provisioning script on $($bitviseConfig.computer_name) ($ProvisionAction / $Environment) via $transport"
 
-    Write-Log "Executing provisioning script on $($Session.ComputerName) ($ProvisionAction / $Environment)"
+    if ($transport -eq "ssh") {
+        return Invoke-SshBitviseCommand `
+            -RequestJson $RequestJson `
+            -ProvisionAction $ProvisionAction `
+            -Environment $Environment `
+            -Password $Password `
+            -ComObjectName $comObject `
+            -BaseMountPath $baseMountPath
+    }
+
+    # ── PS Remoting fallback ─────────────────────────────────────────────
+    if (-not $Session) {
+        return @{ success = $false; message = "PSRemoting transport requires a session." }
+    }
+
+    $localScript = Join-Path $PSScriptRoot "Provision-SFTPAccount.ps1"
 
     try {
         $output = Invoke-Command -Session $Session `
@@ -176,10 +164,88 @@ function Invoke-RemoteBitviseCommand {
         return @{ success = $false; message = "Remote execution failed: $_" }
     }
 
-    # Parse the output as JSON result
-    $outputStr = ($output | Out-String).Trim()
+    return ConvertFrom-RemoteOutput $output
+}
 
-    # Extract JSON from output (the script outputs JSON at the end)
+function Invoke-SshBitviseCommand {
+    <#
+    .SYNOPSIS
+        Executes the provisioning script on the Bitvise server over SSH.
+    .DESCRIPTION
+        Builds a PowerShell command block, encodes it with -EncodedCommand, and
+        runs it over SSH. The request JSON is base64-encoded to avoid escaping
+        issues across the SSH/shell boundary.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RequestJson,
+        [Parameter(Mandatory)][string]$ProvisionAction,
+        [Parameter(Mandatory)][string]$Environment,
+        [string]$Password = "",
+        [string]$ComObjectName = "",
+        [string]$BaseMountPath = ""
+    )
+
+    $bitviseConfig = $config.bitvise
+    $server        = $bitviseConfig.computer_name
+    $sshUser       = if ($bitviseConfig.ssh_user) { $bitviseConfig.ssh_user } else { "service_sftp" }
+    $sshPort       = if ($bitviseConfig.ssh_port) { $bitviseConfig.ssh_port } else { 22 }
+    $sshKeyPath    = $bitviseConfig.ssh_key_path
+    $remoteScript  = $bitviseConfig.remote_script_path
+
+    if (-not $remoteScript) {
+        return @{ success = $false; message = "SSH transport requires 'remote_script_path' in bitvise config." }
+    }
+
+    # Base64-encode the JSON to safely pass through SSH
+    $jsonB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($RequestJson))
+
+    # Build the PowerShell script block to run on the remote server.
+    # It decodes the base64 JSON and calls the provisioning script.
+    $escapedPassword = $Password -replace "'", "''"
+    $escapedMount    = $BaseMountPath -replace "'", "''"
+
+    $remoteBlock = @"
+`$json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$jsonB64'))
+& '$remoteScript' -RequestJson `$json -Action '$ProvisionAction' -Environment '$Environment' -Password '$escapedPassword' -ComObjectName '$ComObjectName' -BaseMountPath '$escapedMount'
+"@
+
+    # Encode the entire block for powershell.exe -EncodedCommand
+    $encodedCmd = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($remoteBlock))
+
+    # Build SSH arguments
+    $sshArgs = @(
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "BatchMode=yes",
+        "-p", $sshPort
+    )
+    if ($sshKeyPath) {
+        $sshArgs += "-i", $sshKeyPath
+    }
+    $sshArgs += "$sshUser@$server"
+    $sshArgs += "powershell.exe -ExecutionPolicy Bypass -EncodedCommand $encodedCmd"
+
+    try {
+        $output = & ssh.exe @sshArgs 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        Write-Log "SSH execution error: $_" "ERROR"
+        return @{ success = $false; message = "SSH failed: $_" }
+    }
+
+    if ($null -eq $output -and $exitCode -ne 0) {
+        return @{ success = $false; message = "SSH returned exit code $exitCode with no output. Check SSH key auth is configured." }
+    }
+
+    return ConvertFrom-RemoteOutput $output
+}
+
+function ConvertFrom-RemoteOutput {
+    <# Extracts a JSON result object from remote command output. #>
+    param($Output)
+
+    $outputStr = ($Output | Out-String).Trim()
+
     $jsonMatch = [regex]::Match($outputStr, '\{[\s\S]*\}$')
     if ($jsonMatch.Success) {
         return ConvertFrom-Json -InputObject $jsonMatch.Value
@@ -203,17 +269,33 @@ function Invoke-Provision {
 
     Write-Log "Found $($approvedFiles.Count) approved request(s) to provision."
 
-    # Establish PS Remoting session to Bitvise server
+    $transport = if ($config.bitvise.transport) { $config.bitvise.transport } else { "psremoting" }
+    Write-Log "Transport: $transport"
+
+    # ── PS Remoting: establish session up front ──────────────────────────
     $session = $null
-    try {
-        Write-Log "Establishing PS Remoting session to $($config.bitvise.computer_name)..."
-        $session = New-BitviseSession
-        Write-Log "Connected to $($session.ComputerName) via PS Remoting." "SUCCESS"
-    }
-    catch {
-        Write-Log "Failed to connect to Bitvise server: $_" "ERROR"
-        Write-Log "Ensure WinRM is enabled on $($config.bitvise.computer_name): Enable-PSRemoting -Force" "ERROR"
-        return
+    if ($transport -eq "psremoting") {
+        try {
+            Write-Log "Establishing PS Remoting session to $($config.bitvise.computer_name)..."
+            $credUser = $config.bitvise.credential_username
+            $credPass = Resolve-SecretValue $config.bitvise.credential_password_env_var
+            if (-not $credPass) {
+                throw "Cannot resolve Bitvise password. Set environment variable '$($config.bitvise.credential_password_env_var)'."
+            }
+            $secPass    = ConvertTo-SecureString $credPass -AsPlainText -Force
+            $credential = New-Object System.Management.Automation.PSCredential($credUser, $secPass)
+            $sessionParams = @{ ComputerName = $config.bitvise.computer_name; Credential = $credential; EnableNetworkAccess = $true }
+            if ($config.bitvise.use_ssl)          { $sessionParams.UseSSL = $true }
+            if ($config.bitvise.authentication)    { $sessionParams.Authentication = $config.bitvise.authentication }
+            $session = New-PSSession @sessionParams
+            Write-Log "Connected to $($session.ComputerName) via PS Remoting." "SUCCESS"
+        }
+        catch {
+            Write-Log "Failed to connect to Bitvise server: $_" "ERROR"
+            return
+        }
+    } else {
+        Write-Log "Using SSH to $($config.bitvise.computer_name):$($config.bitvise.ssh_port) as $($config.bitvise.ssh_user)"
     }
 
     $passwordDefaults = @{}
@@ -243,24 +325,6 @@ function Invoke-Provision {
         foreach ($env in $environments) {
             Write-Log "  Provisioning for $env environment..."
 
-            # ── Check session health and reconnect if needed ─────────────
-            if (-not $session -or $session.State -ne 'Opened') {
-                Write-Log "  Session is $( if ($session) { $session.State } else { 'null' } ) - reconnecting..." "WARNING"
-                if ($session) {
-                    Remove-PSSession $session -ErrorAction SilentlyContinue
-                }
-                try {
-                    $session = New-BitviseSession
-                    Write-Log "  Reconnected to $($session.ComputerName)." "SUCCESS"
-                }
-                catch {
-                    Write-Log "  Failed to reconnect: $_" "ERROR"
-                    $allSuccess = $false
-                    $provisionResults += @{ success = $false; message = "Session reconnection failed: $_"; environment = $env }
-                    continue
-                }
-            }
-
             # ── Generate password if needed ──────────────────────────────────
             $password = ""
             if ($request.auth_method -eq "password" -or $request.auth_method -eq "both") {
@@ -277,10 +341,10 @@ function Invoke-Provision {
             if (-not $DryRun) {
                 Write-Log "  Validating account doesn't already exist..."
                 $validateResult = Invoke-RemoteBitviseCommand `
-                    -Session $session `
                     -RequestJson $requestJson `
                     -ProvisionAction "validate" `
-                    -Environment $env
+                    -Environment $env `
+                    -Session $session
 
                 if (-not $validateResult.success) {
                     Write-Log "  Validation failed: $($validateResult.message)" "ERROR"
@@ -295,11 +359,11 @@ function Invoke-Provision {
             Write-Log "  $( if ($DryRun) { 'DRY RUN - Validating' } else { 'Creating' } ) account..."
 
             $createResult = Invoke-RemoteBitviseCommand `
-                -Session $session `
                 -RequestJson $requestJson `
                 -ProvisionAction $actionType `
                 -Environment $env `
-                -Password $password
+                -Password $password `
+                -Session $session
 
             if ($createResult.success) {
                 Write-Log "  $($createResult.message)" "SUCCESS"
