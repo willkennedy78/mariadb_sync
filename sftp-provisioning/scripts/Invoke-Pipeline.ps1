@@ -282,13 +282,20 @@ function Invoke-SshBitviseCommand {
             $proc.StartInfo = $psi
             $proc.Start() | Out-Null
 
-            # Feed password followed by newline, then close stdin
+            # Feed password for keyboard-interactive, but keep stdin open.
+            # Closing stdin sends EOF to the SSH channel which kills the
+            # session before the remote command can execute.
             $proc.StandardInput.WriteLine($sshPassword)
-            $proc.StandardInput.Close()
 
-            $stdout = $proc.StandardOutput.ReadToEnd()
-            $stderr = $proc.StandardError.ReadToEnd()
+            # Read stdout/stderr asynchronously to avoid deadlock when
+            # either stream's buffer fills while we block on the other.
+            $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+            $stderrTask = $proc.StandardError.ReadToEndAsync()
+
             $proc.WaitForExit()
+
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
             $exitCode = $proc.ExitCode
 
             # Combine stdout/stderr like 2>&1 would
